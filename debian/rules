@@ -1,0 +1,59 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -d debian/radian-telemetry-app/opt/telemetry-app
+
+	install -m 0600 files/.env \
+		debian/radian-telemetry-app/opt/telemetry-app/.env
+
+	install -m 0755 files/agent.py \
+		debian/radian-telemetry-app/opt/telemetry-app/agent.py
+
+	install -m 0755 files/footage_recorder.py \
+		debian/radian-telemetry-app/opt/telemetry-app/footage_recorder.py
+
+	install -m 0755 files/live_stream_server.py \
+		debian/radian-telemetry-app/opt/telemetry-app/live_stream_server.py
+
+	install -m 0644 files/logger.py \
+		debian/radian-telemetry-app/opt/telemetry-app/logger.py
+
+	install -m 0755 files/sender.py \
+		debian/radian-telemetry-app/opt/telemetry-app/sender.py
+
+	install -m 0755 files/start-jetson.sh \
+		debian/radian-telemetry-app/opt/telemetry-app/start-jetson.sh
+
+	install -m 0644 files/requirements.txt \
+		debian/radian-telemetry-app/opt/telemetry-app/requirements.txt
+
+	cp -a files/collectors \
+		debian/radian-telemetry-app/opt/telemetry-app/
+
+	install -d debian/radian-telemetry-app/usr/bin
+	install -m 0755 files/mediamtx \
+		debian/radian-telemetry-app/usr/bin/mediamtx
+
+	install -d debian/radian-telemetry-app/etc
+	install -m 0644 files/mediamtx.yml \
+		debian/radian-telemetry-app/etc/mediamtx.yml
+
+	install -d debian/radian-telemetry-app/lib/systemd/system
+
+	install -m 0644 files/telemetry-agent.service \
+		debian/radian-telemetry-app/lib/systemd/system/telemetry-agent.service
+
+	install -m 0644 files/footage-recorder.service \
+		debian/radian-telemetry-app/lib/systemd/system/footage-recorder.service
+
+	install -m 0644 files/live_stream.service \
+		debian/radian-telemetry-app/lib/systemd/system/live_stream.service
+
+	install -m 0644 files/telemetry-app.service \
+		debian/radian-telemetry-app/lib/systemd/system/telemetry-app.service
+
+	install -m 0644 files/mediamtx.service \
+		debian/radian-telemetry-app/lib/systemd/system/mediamtx.service
