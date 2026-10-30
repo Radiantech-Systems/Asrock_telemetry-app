@@ -73,7 +73,7 @@ DEVICE_ID = (
 
 DEVICE_NAME = os.getenv(
     "DEVICE_NAME",
-    "Jetson AGX Orin",
+    "Radian Edge Platform",
 )
 
 NETWORK_INTERFACE = os.getenv(
@@ -88,7 +88,7 @@ SNAPSHOT_DIR = Path(
 )
 
 VIDEO_DIR = Path(
-    "/root/video_recorder/events/videos"
+    "/root/video_recorder/events/videos/Signal-Jumping"
 )
 
 # Limit the number of images returned in one
@@ -123,106 +123,95 @@ def collect_snapshots(
     offset: int = 0,
     limit: int = MAX_SNAPSHOTS_PER_CATEGORY,
 ) -> dict:
-    """
-    Read the latest local AI snapshots.
-
-    Images are returned temporarily as Base64 data.
-    They are not permanently stored on AWS.
-    """
+    """Collect violation snapshots using the dashboard's category keys."""
 
     category_directories = {
-        "people": ["people"],
-        "vehicles": ["vehicles"],
-        "others": ["animals", "electronics", "other"],
+        "NoHelmet": [SNAPSHOT_DIR / "NoHelmet"],
+        "wrong-rute": [SNAPSHOT_DIR / "vehicles" / "wrong-rute"],
+        "signal-jumpig": [
+            SNAPSHOT_DIR / "vehicles" / "signal-jumpig"
+        ],
     }
 
     result = {
-        "people": [],
-        "vehicles": [],
-        "others": [],
+        "NoHelmet": [],
+        "wrong-rute": [],
+        "signal-jumpig": [],
     }
 
-    for output_category, directory_names in category_directories.items():
+    image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
 
+    for category, directories in category_directories.items():
         all_files = []
 
-        for directory_name in directory_names:
-
-            directory = SNAPSHOT_DIR / directory_name
-
-            if not directory.exists():
+        for directory in directories:
+            if not directory.is_dir():
+                logger.warning(
+                    f"Snapshot directory not found: {directory}"
+                )
                 continue
 
             try:
-                files = [
-                    path
-                    for path in directory.iterdir()
-                    if path.is_file()
-                    and path.stat().st_size > 0
-                    and path.suffix.lower()
-                    in {
-                        ".jpg",
-                        ".jpeg",
-                        ".png",
-                        ".webp",
-                    }
-                ]
-
-                all_files.extend(files)
-
-            except Exception as e:
+                all_files.extend(
+                    image_path
+                    for image_path in directory.iterdir()
+                    if image_path.is_file()
+                    and image_path.suffix.lower() in image_extensions
+                    and image_path.stat().st_size > 0
+                )
+            except OSError as exc:
                 logger.warning(
                     f"Unable to read snapshot directory "
-                    f"{directory}: {e}"
+                    f"{directory}: {exc}"
                 )
 
         all_files.sort(
-            key=lambda path: path.stat().st_mtime,
+            key=lambda image_path: image_path.stat().st_mtime,
             reverse=True,
         )
 
         selected_files = all_files[offset:offset + limit]
 
-        for path in selected_files:
-
+        for image_path in selected_files:
             try:
-                image_bytes = path.read_bytes()
-
+                image_bytes = image_path.read_bytes()
                 image_data = base64.b64encode(
                     image_bytes
                 ).decode("ascii")
-
-                suffix = path.suffix.lower()
 
                 mime_type = {
                     ".jpg": "image/jpeg",
                     ".jpeg": "image/jpeg",
                     ".png": "image/png",
                     ".webp": "image/webp",
-                }.get(
-                    suffix,
-                    "application/octet-stream",
-                )
+                }[image_path.suffix.lower()]
 
                 timestamp = datetime.fromtimestamp(
-                    path.stat().st_mtime,
+                    image_path.stat().st_mtime,
                     tz=timezone.utc,
                 ).isoformat()
 
-                result[output_category].append(
-                    {
-                        "filename": path.name,
-                        "image": image_data,
-                        "mime_type": mime_type,
-                        "timestamp": timestamp,
-                    }
-                )
+                result[category].append({
+                    "filename": image_path.name,
+                    "image": image_data,
+                    "mime_type": mime_type,
+                    "timestamp": timestamp,
+                    "category": category,
+                })
 
-            except Exception as e:
+            except (OSError, ValueError) as exc:
                 logger.warning(
                     f"Failed to read snapshot "
-                    f"{path}: {e}"
+                    f"{image_path}: {exc}"
                 )
+
+    logger.info(
+        "Collected violation snapshots: "
+        + ", ".join(
+            f"{category}={len(images)}"
+            for category, images in result.items()
+        )
+    )
 
     return result
 
@@ -261,13 +250,11 @@ def collect_sliced_videos(
                     tz=timezone.utc,
                 ).isoformat()
 
-                if since and modified <= since:
-                    continue
 
                 videos.append(
                     {
                         "name": path.name,
-                        "path": path.name,
+                        "path": f"Signal-Jumping/{path.name}",
                         "size": stat.st_size,
                         "modified": modified,
                     }

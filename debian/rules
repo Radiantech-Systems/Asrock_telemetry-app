@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 %:
-	dh $@
+	dh $@ --no-dwz
 
 override_dh_auto_install:
 	install -d debian/radian-telemetry-app/opt/telemetry-app
@@ -57,3 +57,5 @@ override_dh_auto_install:
 
 	install -m 0644 files/mediamtx.service \
 		debian/radian-telemetry-app/lib/systemd/system/mediamtx.service
+
+override_dh_dwz:

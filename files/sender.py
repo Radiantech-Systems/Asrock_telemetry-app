@@ -24,6 +24,66 @@ logger = get_logger("sender")
 API_KEY = os.getenv("API_KEY", "")
 
 
+SIGNAL_STATE_FILE = os.getenv(
+    "SIGNAL_STATE_FILE",
+    "/opt/telemetry-app/traffic_signal_state.json",
+)
+_SIGNAL_LANES = ("lane_1", "lane_2", "lane_3", "lane_4")
+
+
+def _save_traffic_signal_state(state: dict) -> bool:
+    """Validate and atomically overwrite the latest signal-state JSON."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    if not isinstance(state, dict) or set(state) != set(_SIGNAL_LANES):
+        logger.warning("Ignoring invalid traffic signal state: lane keys mismatch")
+        return False
+
+    if any(state[lane] not in ("RED", "GREEN") for lane in _SIGNAL_LANES):
+        logger.warning("Ignoring invalid traffic signal state: invalid color")
+        return False
+
+    if sum(state[lane] == "GREEN" for lane in _SIGNAL_LANES) > 1:
+        logger.warning("Ignoring invalid traffic signal state: multiple green lanes")
+        return False
+
+    destination = Path(SIGNAL_STATE_FILE)
+    temp_path = None
+
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=str(destination.parent),
+            prefix=".traffic_signal_state.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            json.dump(state, f, indent=2)
+            f.write("\n")
+            temp_path = f.name
+
+        os.replace(temp_path, destination)
+        logger.info("Updated traffic signal JSON: %s", destination)
+        return True
+
+    except (OSError, TypeError, ValueError) as exc:
+        logger.error("Failed to update traffic signal JSON: %s", exc)
+        return False
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+
+
+
 def _headers() -> dict:
     return {"X-API-Key": API_KEY} if API_KEY else {}
 
@@ -43,6 +103,15 @@ def send(
         )
 
         if resp.status_code == 200:
+            try:
+                response_data = resp.json()
+            except ValueError:
+                response_data = {}
+
+            signal_state = response_data.get("traffic_signal_state")
+            if signal_state is not None:
+                _save_traffic_signal_state(signal_state)
+
             return True
 
         logger.warning(
